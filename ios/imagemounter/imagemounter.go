@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Masterminds/semver"
-	"github.com/danielpaulus/go-ios/ios"
+	"github.com/izinga/go-ios/ios"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"os"

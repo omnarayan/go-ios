@@ -7,7 +7,7 @@ import (
 	"net"
 	"testing"
 
-	ios "github.com/danielpaulus/go-ios/ios"
+	ios "github.com/izinga/go-ios/ios"
 	"github.com/stretchr/testify/assert"
 	mock "github.com/stretchr/testify/mock"
 )

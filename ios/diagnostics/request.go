@@ -2,7 +2,7 @@ package diagnostics
 
 import (
 	"bytes"
-	"github.com/danielpaulus/go-ios/ios"
+	"github.com/izinga/go-ios/ios"
 
 	plist "howett.net/plist"
 )

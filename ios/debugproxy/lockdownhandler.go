@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"io"
 
-	ios "github.com/danielpaulus/go-ios/ios"
+	ios "github.com/izinga/go-ios/ios"
 	log "github.com/sirupsen/logrus"
 	"howett.net/plist"
 )

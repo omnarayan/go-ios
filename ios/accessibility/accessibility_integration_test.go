@@ -5,8 +5,8 @@ package accessibility_test
 import (
 	"testing"
 
-	ios "github.com/danielpaulus/go-ios/ios"
-	"github.com/danielpaulus/go-ios/ios/accessibility"
+	ios "github.com/izinga/go-ios/ios"
+	"github.com/izinga/go-ios/ios/accessibility"
 	log "github.com/sirupsen/logrus"
 )
 

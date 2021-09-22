@@ -3,7 +3,7 @@ package installationproxy
 import (
 	"bytes"
 
-	ios "github.com/danielpaulus/go-ios/ios"
+	ios "github.com/izinga/go-ios/ios"
 	"howett.net/plist"
 )
 

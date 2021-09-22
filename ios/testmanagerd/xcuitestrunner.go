@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver"
-	ios "github.com/danielpaulus/go-ios/ios"
-	dtx "github.com/danielpaulus/go-ios/ios/dtx_codec"
-	"github.com/danielpaulus/go-ios/ios/house_arrest"
-	"github.com/danielpaulus/go-ios/ios/installationproxy"
-	"github.com/danielpaulus/go-ios/ios/instruments"
-	"github.com/danielpaulus/go-ios/ios/nskeyedarchiver"
+	ios "github.com/izinga/go-ios/ios"
+	dtx "github.com/izinga/go-ios/ios/dtx_codec"
+	"github.com/izinga/go-ios/ios/house_arrest"
+	"github.com/izinga/go-ios/ios/installationproxy"
+	"github.com/izinga/go-ios/ios/instruments"
+	"github.com/izinga/go-ios/ios/nskeyedarchiver"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )

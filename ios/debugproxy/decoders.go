@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	dtx "github.com/danielpaulus/go-ios/ios/dtx_codec"
+	dtx "github.com/izinga/go-ios/ios/dtx_codec"
 	log "github.com/sirupsen/logrus"
 )
 

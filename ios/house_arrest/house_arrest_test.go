@@ -6,8 +6,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/danielpaulus/go-ios/usbmux"
-	"github.com/danielpaulus/go-ios/usbmux/house_arrest"
+	"github.com/izinga/go-ios/usbmux"
+	"github.com/izinga/go-ios/usbmux/house_arrest"
 )
 
 

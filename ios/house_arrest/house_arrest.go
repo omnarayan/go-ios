@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/danielpaulus/go-ios/ios"
+	"github.com/izinga/go-ios/ios"
 
 	"howett.net/plist"
 )

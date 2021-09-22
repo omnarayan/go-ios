@@ -3,8 +3,8 @@ package instruments
 import (
 	"fmt"
 
-	"github.com/danielpaulus/go-ios/ios"
-	dtx "github.com/danielpaulus/go-ios/ios/dtx_codec"
+	"github.com/izinga/go-ios/ios"
+	dtx "github.com/izinga/go-ios/ios/dtx_codec"
 	log "github.com/sirupsen/logrus"
 )
 

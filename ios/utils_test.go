@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	ios "github.com/danielpaulus/go-ios/ios"
+	ios "github.com/izinga/go-ios/ios"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"

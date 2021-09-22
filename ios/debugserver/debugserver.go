@@ -12,8 +12,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/danielpaulus/go-ios/ios"
-	"github.com/danielpaulus/go-ios/ios/installationproxy"
+	"github.com/izinga/go-ios/ios"
+	"github.com/izinga/go-ios/ios/installationproxy"
 	"howett.net/plist"
 
 	log "github.com/sirupsen/logrus"

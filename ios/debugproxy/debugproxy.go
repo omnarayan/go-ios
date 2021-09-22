@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	ios "github.com/danielpaulus/go-ios/ios"
+	ios "github.com/izinga/go-ios/ios"
 
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"

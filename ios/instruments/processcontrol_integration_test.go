@@ -6,8 +6,8 @@ import (
 	"log"
 	"testing"
 
-	ios "github.com/danielpaulus/go-ios/ios"
-	"github.com/danielpaulus/go-ios/ios/instruments"
+	ios "github.com/izinga/go-ios/ios"
+	"github.com/izinga/go-ios/ios/instruments"
 	"github.com/stretchr/testify/assert"
 )
 

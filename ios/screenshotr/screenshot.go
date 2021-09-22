@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 
-	ios "github.com/danielpaulus/go-ios/ios"
+	ios "github.com/izinga/go-ios/ios"
 )
 
 const serviceName string = "com.apple.mobile.screenshotr"

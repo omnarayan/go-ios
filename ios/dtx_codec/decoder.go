@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/danielpaulus/go-ios/ios/nskeyedarchiver"
+	"github.com/izinga/go-ios/ios/nskeyedarchiver"
 )
 
 //ReadMessage uses the reader to fully read a Message from it in blocking mode.

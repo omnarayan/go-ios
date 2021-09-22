@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/danielpaulus/go-ios/ios"
+	"github.com/izinga/go-ios/ios"
 )
 
 const serviceName string = "com.apple.syslog_relay"
