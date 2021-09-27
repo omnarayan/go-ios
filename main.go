@@ -18,6 +18,7 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/docopt/docopt-go"
 	"github.com/izinga/go-ios/ios"
 	"github.com/izinga/go-ios/ios/accessibility"
 	"github.com/izinga/go-ios/ios/debugproxy"
@@ -30,7 +31,6 @@ import (
 	"github.com/izinga/go-ios/ios/screenshotr"
 	syslog "github.com/izinga/go-ios/ios/syslog"
 	"github.com/izinga/go-ios/ios/testmanagerd"
-	"github.com/docopt/docopt-go"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -468,13 +468,7 @@ The commands work as following:
 
 	b, _ = arguments.Bool("reboot")
 	if b {
-		err := diagnostics.Reboot(device)
-		if err != nil {
-			log.Error(err)
-		} else {
-			log.Info("ok")
-		}
-		return
+		RebootDevice(device)
 	}
 
 }
@@ -544,6 +538,17 @@ func fixDevImage(device ios.DeviceEntry, baseDir string) {
 	log.Infof("installing downloaded image '%s'", imagePath)
 	mountImage(device, imagePath)
 
+}
+
+func RebootDevice(device ios.DeviceEntry) error {
+	log.Info("Rebooting the device")
+	err := diagnostics.Reboot(device)
+	if err != nil {
+		log.Error(err)
+	} else {
+		log.Info("ok")
+	}
+	return nil
 }
 
 func mountImage(device ios.DeviceEntry, path string) {
