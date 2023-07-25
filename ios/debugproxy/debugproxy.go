@@ -12,13 +12,12 @@ import (
 
 	ios "github.com/izinga/go-ios/ios"
 
-	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 )
 
 const connectionJSONFileName = "connections.json"
 
-//DebugProxy can be used to dump and modify communication between mac and host
+// DebugProxy can be used to dump and modify communication between mac and host
 type DebugProxy struct {
 	mux               sync.Mutex
 	serviceList       []PhoneServiceInformation
@@ -26,20 +25,20 @@ type DebugProxy struct {
 	WorkingDir        string
 }
 
-//PhoneServiceInformation contains info about a service started on the phone via lockdown.
+// PhoneServiceInformation contains info about a service started on the phone via lockdown.
 type PhoneServiceInformation struct {
 	ServicePort uint16
 	ServiceName string
 	UseSSL      bool
 }
 
-//ProxyConnection keeps track of the pairRecord and uses an ID to identify connections.
+// ProxyConnection keeps track of the pairRecord and uses an ID to identify connections.
 type ProxyConnection struct {
 	id         string
 	pairRecord ios.PairRecord
 	debugProxy *DebugProxy
 	info       ConnectionInfo
-	log        *logrus.Entry
+	log        *log.Entry
 	mux        sync.Mutex
 	closed     bool
 }
@@ -77,13 +76,17 @@ func (d *DebugProxy) retrieveServiceInfoByPort(port uint16) (PhoneServiceInforma
 	return PhoneServiceInformation{}, fmt.Errorf("No Service found for port %d", port)
 }
 
-//NewDebugProxy creates a new Default proxy
+// NewDebugProxy creates a new Default proxy
 func NewDebugProxy() *DebugProxy {
 	return &DebugProxy{mux: sync.Mutex{}, serviceList: []PhoneServiceInformation{}}
 }
 
-//Launch moves the original /var/run/usbmuxd to /var/run/usbmuxd.real and starts the server at /var/run/usbmuxd
+// Launch moves the original /var/run/usbmuxd to /var/run/usbmuxd.real and starts the server at /var/run/usbmuxd
 func (d *DebugProxy) Launch(device ios.DeviceEntry, binaryMode bool) error {
+	list, _ := ios.ListDevices()
+	if len(list.DeviceList) > 1 {
+		return fmt.Errorf("dproxy currently does not work when more than one device is connected to the host. please disconnect all but one device.")
+	}
 	if binaryMode {
 		log.Info("Lauching proxy in full binary mode")
 	}
@@ -96,15 +99,19 @@ func (d *DebugProxy) Launch(device ios.DeviceEntry, binaryMode bool) error {
 		}
 		log.Infof("Successfully retrieved pairrecord: %s for device %s", pairRecord.HostID, device.Properties.SerialNumber)
 	}
-	originalSocket, err := MoveSock(ios.DefaultUsbmuxdSocket)
+	originalSocket, err := MoveSock(ios.ToUnixSocketPath(ios.GetUsbmuxdSocket()))
 	if err != nil {
-		log.WithFields(log.Fields{"error": err, "socket": ios.DefaultUsbmuxdSocket}).Error("Unable to move, lacking permissions?")
+		log.WithFields(log.Fields{"error": err, "socket": ios.GetUsbmuxdSocket()}).Error("Unable to move, lacking permissions?")
 		return err
 	}
 	d.setupDirectory()
-	listener, err := net.Listen("unix", ios.DefaultUsbmuxdSocket)
+	listener, err := net.Listen("unix", ios.ToUnixSocketPath(ios.GetUsbmuxdSocket()))
 	if err != nil {
 		log.Error("Could not listen on usbmuxd socket, do I have access permissions?", err)
+		return err
+	}
+	if err := os.Chmod(ios.ToUnixSocketPath(ios.GetUsbmuxdSocket()), 0o777); err != nil {
+		log.Error("Could not change permission on usbmuxd socket", err)
 		return err
 	}
 
@@ -113,11 +120,15 @@ func (d *DebugProxy) Launch(device ios.DeviceEntry, binaryMode bool) error {
 		if err != nil {
 			log.Errorf("error with connection: %e", err)
 		}
+		log.Info("connected")
 		d.connectionCounter++
 		id := fmt.Sprintf("#%d", d.connectionCounter)
 		connectionPath := filepath.Join(".", d.WorkingDir, "connection-"+id+"-"+time.Now().UTC().Format("2006.01.02-15.04.05.000"))
 
-		os.MkdirAll(connectionPath, os.ModePerm)
+		err = os.MkdirAll(connectionPath, os.ModePerm)
+		if err != nil {
+			log.Errorf("failed mkdirall in connected")
+		}
 
 		info := ConnectionInfo{ConnectionPath: connectionPath, CreatedAt: time.Now(), ID: id}
 		d.addConnectionInfoToJsonFile(info)
@@ -125,7 +136,7 @@ func (d *DebugProxy) Launch(device ios.DeviceEntry, binaryMode bool) error {
 		bindumpHostProxyFile := filepath.Join(connectionPath, "bindump-hostservice-to-proxy.txt")
 
 		if !binaryMode {
-			//if the proxy is in full binary mode, there is no point in creating another binary dump
+			// if the proxy is in full binary mode, there is no point in creating another binary dump
 			log.Infof("Creating binary dump of all communication between MAC OS and debugproxy at: %s", bindumpHostProxyFile)
 			conn = NewDumpingConn(bindumpHostProxyFile, conn)
 		}
@@ -135,7 +146,7 @@ func (d *DebugProxy) Launch(device ios.DeviceEntry, binaryMode bool) error {
 }
 
 func startProxyConnection(conn net.Conn, originalSocket string, pairRecord ios.PairRecord, debugProxy *DebugProxy, info ConnectionInfo, binaryMode bool) {
-
+	log.Infof("starting tunnel")
 	devConn, err := ios.NewDeviceConnection(originalSocket)
 	if err != nil {
 		log.Error(err)
@@ -154,13 +165,12 @@ func startProxyConnection(conn net.Conn, originalSocket string, pairRecord ios.P
 	connListeningOnUnixSocket := ios.NewUsbMuxConnection(ios.NewDeviceConnectionWithConn(conn))
 	connectionToDevice := ios.NewUsbMuxConnection(devConn)
 	go proxyUsbMuxConnection(&p, connListeningOnUnixSocket, connectionToDevice)
-
 }
 
-//Close moves /var/run/usbmuxd.real back to /var/run/usbmuxd and disconnects all active proxy connections
+// Close moves /var/run/usbmuxd.real back to /var/run/usbmuxd and disconnects all active proxy connections
 func (d *DebugProxy) Close() {
 	log.Info("Moving back original socket")
-	err := MoveBack(ios.DefaultUsbmuxdSocket)
+	err := MoveBack(ios.ToUnixSocketPath(ios.GetUsbmuxdSocket()))
 	if err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed moving back socket")
 	}
@@ -174,7 +184,7 @@ func (d *DebugProxy) setupDirectory() {
 
 func (d DebugProxy) addConnectionInfoToJsonFile(connInfo ConnectionInfo) {
 	file, err := os.OpenFile(filepath.Join(d.WorkingDir, connectionJSONFileName),
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		log.Println(err)
 	}
@@ -192,6 +202,7 @@ func (p ProxyConnection) logJSONMessageFromDevice(msg map[string]interface{}) {
 	msg["direction"] = "device->host"
 	writeJSON(filepath.Join(p.info.ConnectionPath, outPath), msg)
 }
+
 func (p ProxyConnection) logJSONMessageToDevice(msg map[string]interface{}) {
 	const outPath = "jsondump.json"
 	msg["direction"] = "host->device"
@@ -200,7 +211,7 @@ func (p ProxyConnection) logJSONMessageToDevice(msg map[string]interface{}) {
 
 func writeJSON(filePath string, JSON interface{}) {
 	file, err := os.OpenFile(filePath,
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		panic(fmt.Sprintf("Could not write to file err: %v filepath:'%s'", err, filePath))
 	}

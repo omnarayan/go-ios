@@ -3,7 +3,6 @@ package dtx_test
 import (
 	"bytes"
 	"io/ioutil"
-
 	"testing"
 
 	dtx "github.com/izinga/go-ios/ios/dtx_codec"
@@ -29,12 +28,24 @@ func TestErrors(t *testing.T) {
 		_, _, err = dtx.DecodeNonBlocking(dat[0 : 4+i])
 		assert.True(t, dtx.IsIncomplete(err))
 	}
+}
 
+func TestLZ4CompressedDtxMessage(t *testing.T) {
+	dat, err := ioutil.ReadFile("fixtures/instruments-metrics-dtx.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fixtureMsg, _, err := dtx.DecodeNonBlocking(dat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log.Infof("%v", fixtureMsg)
+	assert.NoError(t, err)
 }
 
 func TestCodec2(t *testing.T) {
 	dat, err := ioutil.ReadFile("fixtures/requestChannelWithCodeIdentifier.bin")
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,9 +66,7 @@ func TestCodec2(t *testing.T) {
 }
 
 func TestCodec(t *testing.T) {
-
 	dat, err := ioutil.ReadFile("fixtures/requestChannelWithCodeIdentifier.bin")
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,16 +84,13 @@ func TestCodec(t *testing.T) {
 			assert.Equal(t, dat, bytes)
 		}
 	}
-
 }
 
 func TestAXDump(t *testing.T) {
-
-	//dat, err := ioutil.ReadFile("fixtures/broken-message-from-ax-1.bin")
-	//dat, err := ioutil.ReadFile("fixtures/nsmutablestring.bin")
-	//dat, err := ioutil.ReadFile("fixtures/nsnull.bin")
+	// dat, err := ioutil.ReadFile("fixtures/broken-message-from-ax-1.bin")
+	// dat, err := ioutil.ReadFile("fixtures/nsmutablestring.bin")
+	// dat, err := ioutil.ReadFile("fixtures/nsnull.bin")
 	dat, err := ioutil.ReadFile("fixtures/dtactivitytapmessage.bin")
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,16 +104,13 @@ func TestAXDump(t *testing.T) {
 			t.Fatal("whet", err)
 		}
 	}
-
 }
 
 func TestType1Message(t *testing.T) {
-
-	//dat, err := ioutil.ReadFile("fixtures/broken-message-from-ax-1.bin")
-	//dat, err := ioutil.ReadFile("fixtures/nsmutablestring.bin")
-	//dat, err := ioutil.ReadFile("fixtures/nsnull.bin")
+	// dat, err := ioutil.ReadFile("fixtures/broken-message-from-ax-1.bin")
+	// dat, err := ioutil.ReadFile("fixtures/nsmutablestring.bin")
+	// dat, err := ioutil.ReadFile("fixtures/nsnull.bin")
 	dat, err := ioutil.ReadFile("fixtures/unknown-d-h-h-message.bin")
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +124,6 @@ func TestType1Message(t *testing.T) {
 			t.Fatal("whet", err)
 		}
 	}
-
 }
 
 func TestFragmentedMessage(t *testing.T) {
@@ -130,7 +132,7 @@ func TestFragmentedMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	//test the non blocking decoder first
+	// test the non blocking decoder first
 	msg, remainingBytes, err := dtx.DecodeNonBlocking(dat)
 	if assert.NoError(t, err) {
 		assert.Equal(t, 79707, len(remainingBytes))
@@ -158,7 +160,7 @@ func TestFragmentedMessage(t *testing.T) {
 	assert.True(t, defragmenter.HasFinished())
 	nonblockingFullMessage := defragmenter.Extract()
 
-	//now test that the blocking decoder creates the same message and that it is decodeable
+	// now test that the blocking decoder creates the same message and that it is decodeable
 	dtxReader := bytes.NewReader(dat)
 	msg, err = dtx.ReadMessage(dtxReader)
 	if assert.NoError(t, err) {
@@ -230,5 +232,4 @@ func TestDecoder(t *testing.T) {
 		assert.Equal(t, 0, msg.PayloadHeader.Flags)
 
 	}
-
 }

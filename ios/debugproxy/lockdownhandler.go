@@ -33,10 +33,10 @@ func proxyLockDownConnection(p *ProxyConnection, lockdownOnUnixSocket *ios.LockD
 		p.log.WithFields(log.Fields{"ID": p.id, "direction": "host2device"}).Info(decodedRequest)
 
 		err = lockdownToDevice.Send(decodedRequest)
-		p.log.Info("done sending to device")
 		if err != nil {
 			p.log.Errorf("Failed forwarding message to device: %x", request)
 		}
+		p.log.Info("done sending to device")
 		response, err := lockdownToDevice.ReadMessage()
 		if err != nil {
 			log.Errorf("error reading from device: %+v", err)
@@ -70,7 +70,8 @@ func proxyLockDownConnection(p *ProxyConnection, lockdownOnUnixSocket *ios.LockD
 			info := PhoneServiceInformation{
 				ServicePort: uint16(decodedResponse["Port"].(uint64)),
 				ServiceName: decodedResponse["Service"].(string),
-				UseSSL:      useSSL}
+				UseSSL:      useSSL,
+			}
 
 			p.log.Debugf("Detected Service Start:%+v", info)
 			p.debugProxy.storeServiceInformation(info)

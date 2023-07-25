@@ -2,7 +2,6 @@ package nskeyedarchiver
 
 import (
 	"fmt"
-
 	"time"
 
 	"github.com/google/uuid"
@@ -10,13 +9,16 @@ import (
 	"howett.net/plist"
 )
 
-var decodableClasses map[string]func(map[string]interface{}, []interface{}) interface{}
-var encodableClasses map[string]func(object interface{}, objects []interface{}) ([]interface{}, plist.UID)
+var (
+	decodableClasses map[string]func(map[string]interface{}, []interface{}) interface{}
+	encodableClasses map[string]func(object interface{}, objects []interface{}) ([]interface{}, plist.UID)
+)
 
 func SetupDecoders() {
 	if decodableClasses == nil {
 		decodableClasses = map[string]func(map[string]interface{}, []interface{}) interface{}{
 			"DTActivityTraceTapMessage": NewDTActivityTraceTapMessage,
+			"DTSysmonTapMessage":        NewDTActivityTraceTapMessage,
 			"NSError":                   NewNSError,
 			"NSNull":                    NewNSNullFromArchived,
 			"NSDate":                    NewNSDate,
@@ -25,6 +27,12 @@ func SetupDecoders() {
 			"XCTCapabilities":           NewXCTCapabilities,
 			"NSUUID":                    NewNSUUIDFromBytes,
 			"XCActivityRecord":          DecodeXCActivityRecord,
+			"DTKTraceTapMessage":        NewDTKTraceTapMessage,
+			"NSValue":                   NewNSValue,
+			"XCTTestIdentifier":         NewXCTTestIdentifier,
+			"DTTapStatusMessage":        NewDTTapStatusMessage,
+			"DTTapMessage":              NewDTTapMessage,
+			"DTCPUClusterInfo":          NewDTCPUClusterInfo,
 		}
 	}
 }
@@ -38,6 +46,7 @@ func SetupEncoders() {
 			"NSNull":              archiveNSNull,
 			"NSMutableDictionary": archiveNSMutableDictionary,
 			"XCTCapabilities":     archiveXCTCapabilities,
+			"[]string":            archiveStringSlice,
 		}
 	}
 }
@@ -62,7 +71,7 @@ func NewXCTestConfiguration(
 	contents["defaultTestExecutionTimeAllowance"] = plist.UID(0)
 	contents["disablePerformanceMetrics"] = false
 	contents["emitOSLogs"] = false
-	//contents["formatVersion"]= 2
+	// contents["formatVersion"]= 2
 	contents["gatherLocalizableStringsData"] = false
 	contents["initializeForUITesting"] = true
 	contents["maximumTestExecutionTimeAllowance"] = plist.UID(0)
@@ -72,11 +81,11 @@ func NewXCTestConfiguration(
 	contents["reportResultsToIDE"] = true
 	contents["sessionIdentifier"] = NewNSUUID(sessionIdentifier)
 	contents["systemAttachmentLifetime"] = 2
-	//contents["targetApplicationArguments"] = []interface{}{} //TODO: triggers a bug
+	// contents["targetApplicationArguments"] = []interface{}{} //TODO: triggers a bug
 	contents["targetApplicationBundleID"] = targetApplicationBundleID
-	//contents["targetApplicationEnvironment"] = //TODO: triggers a bug map[string]interface{}{}
+	// contents["targetApplicationEnvironment"] = //TODO: triggers a bug map[string]interface{}{}
 	contents["targetApplicationPath"] = targetApplicationPath
-	//testApplicationDependencies
+	// testApplicationDependencies
 	contents["testApplicationUserOverrides"] = plist.UID(0)
 	contents["testBundleRelativePath"] = plist.UID(0)
 	contents["testBundleURL"] = NewNSURL(testBundleURL)
@@ -100,8 +109,10 @@ func archiveXcTestConfiguration(xctestconfigInterface interface{}, objects []int
 
 	xctestconfig.contents["$class"] = classRef
 
-	for _, key := range []string{"aggregateStatisticsBeforeCrash", "automationFrameworkPath", "productModuleName", "sessionIdentifier",
-		"targetApplicationBundleID", "targetApplicationPath", "testBundleURL"} {
+	for _, key := range []string{
+		"aggregateStatisticsBeforeCrash", "automationFrameworkPath", "productModuleName", "sessionIdentifier",
+		"targetApplicationBundleID", "targetApplicationPath", "testBundleURL",
+	} {
 		var ref plist.UID
 		objects, ref = archive(xctestconfig.contents[key], objects)
 		xctestconfig.contents[key] = ref
@@ -181,6 +192,7 @@ func NewNSUUID(id uuid.UUID) NSUUID {
 	}
 	return NSUUID{bytes}
 }
+
 func archiveXCTCapabilities(capsIface interface{}, objects []interface{}) ([]interface{}, plist.UID) {
 	caps := capsIface.(XCTCapabilities)
 	object := map[string]interface{}{}
@@ -196,6 +208,7 @@ func archiveXCTCapabilities(capsIface interface{}, objects []interface{}) ([]int
 	objects = append(objects, buildClassDict("XCTCapabilities", "NSObject"))
 	return objects, plist.UID(capsReference)
 }
+
 func archiveNSUUID(uid interface{}, objects []interface{}) ([]interface{}, plist.UID) {
 	nsuuid := uid.(NSUUID)
 	object := map[string]interface{}{}
@@ -249,13 +262,59 @@ func NewDTActivityTraceTapMessage(object map[string]interface{}, objects []inter
 	return DTActivityTraceTapMessage{DTTapMessagePlist: plist}
 }
 
-//TODO: make this nice, partially extracting objects is not really cool
+type DTKTraceTapMessage struct {
+	DTTapMessagePlist map[string]interface{}
+}
+
+func NewDTKTraceTapMessage(object map[string]interface{}, objects []interface{}) interface{} {
+	ref := object["DTTapMessagePlist"].(plist.UID)
+	plist, _ := extractDictionary(objects[ref].(map[string]interface{}), objects)
+	return DTKTraceTapMessage{DTTapMessagePlist: plist}
+}
+
+type NSValue struct {
+	NSSpecial uint64
+	NSRectval string
+}
+
+func NewNSValue(object map[string]interface{}, objects []interface{}) interface{} {
+	ref := object["NS.rectval"].(plist.UID)
+	rectval, _ := objects[ref].(string)
+	special := object["NS.special"].(uint64)
+	return NSValue{NSRectval: rectval, NSSpecial: special}
+}
+
+type XCTTestIdentifier struct {
+	O uint64
+	C []string
+}
+
+func (x XCTTestIdentifier) String() string {
+	return fmt.Sprintf("XCTTestIdentifier{o:%d , c:%v}", x.O, x.C)
+}
+
+func NewXCTTestIdentifier(object map[string]interface{}, objects []interface{}) interface{} {
+	ref := object["c"].(plist.UID)
+	// plist, _ := extractObjects(objects[ref].(map[string]interface{}), objects)
+	fd := objects[ref].(map[string]interface{})
+	extractObjects, _ := extractObjects(toUidList(fd[nsObjects].([]interface{})), objects)
+	stringarray := make([]string, len(extractObjects))
+	for i, v := range extractObjects {
+		stringarray[i] = v.(string)
+	}
+	o := object["o"].(uint64)
+	return XCTTestIdentifier{
+		O: o,
+		C: stringarray,
+	}
+}
+
+// TODO: make this nice, partially extracting objects is not really cool
 type PartiallyExtractedXcTestConfig struct {
 	values map[string]interface{}
 }
 
 func NewXCTestConfigurationFromBytes(object map[string]interface{}, objects []interface{}) interface{} {
-
 	config := make(map[string]interface{}, len(object))
 	for k, v := range object {
 		value := v
@@ -285,7 +344,7 @@ func NewNSError(object map[string]interface{}, objects []interface{}) interface{
 	return NSError{ErrorCode: errorCode, Domain: domain, UserInfo: userinfo}
 }
 
-//Apples Reference Date is Jan 1st 2001 00:00
+// Apples Reference Date is Jan 1st 2001 00:00
 const nsReferenceDate = 978307200000
 
 type NSDate struct {
@@ -293,6 +352,10 @@ type NSDate struct {
 }
 
 type DTTapHeartbeatMessage struct {
+	DTTapMessagePlist map[string]interface{}
+}
+
+type DTTapMessage struct {
 	DTTapMessagePlist map[string]interface{}
 }
 
@@ -312,6 +375,22 @@ func NewDTTapHeartbeatMessage(object map[string]interface{}, objects []interface
 	return DTTapHeartbeatMessage{DTTapMessagePlist: plist}
 }
 
+func NewDTTapMessage(object map[string]interface{}, objects []interface{}) interface{} {
+	ref := object["DTTapMessagePlist"].(plist.UID)
+	plist, _ := extractDictionary(objects[ref].(map[string]interface{}), objects)
+	return DTTapMessage{DTTapMessagePlist: plist}
+}
+
+type DTTapStatusMessage struct {
+	DTTapMessagePlist map[string]interface{}
+}
+
+func NewDTTapStatusMessage(object map[string]interface{}, objects []interface{}) interface{} {
+	ref := object["DTTapMessagePlist"].(plist.UID)
+	plist, _ := extractDictionary(objects[ref].(map[string]interface{}), objects)
+	return DTTapStatusMessage{DTTapMessagePlist: plist}
+}
+
 func NewNSDate(object map[string]interface{}, objects []interface{}) interface{} {
 	value := object["NS.time"].(float64)
 	milliesFloat := (1000*value + nsReferenceDate)
@@ -319,8 +398,18 @@ func NewNSDate(object map[string]interface{}, objects []interface{}) interface{}
 	time := time.Unix(0, millies*int64(time.Millisecond))
 	return NSDate{time}
 }
+
 func (n NSDate) String() string {
 	return fmt.Sprintf("%s", n.Timestamp)
+}
+
+type DTCPUClusterInfo struct {
+	ClusterID    uint64
+	ClusterFlags uint64
+}
+
+func NewDTCPUClusterInfo(object map[string]interface{}, objects []interface{}) interface{} {
+	return DTCPUClusterInfo{ClusterID: object["_clusterID"].(uint64), ClusterFlags: object["_clusterFlags"].(uint64)}
 }
 
 type NSNull struct {
@@ -330,6 +419,7 @@ type NSNull struct {
 func NewNSNullFromArchived(object map[string]interface{}, objects []interface{}) interface{} {
 	return NewNSNull()
 }
+
 func NewNSNull() interface{} {
 	return NSNull{"NSNull"}
 }
@@ -349,6 +439,11 @@ type NSMutableDictionary struct {
 
 func NewNSMutableDictionary(internalDict map[string]interface{}) interface{} {
 	return NSMutableDictionary{internalDict}
+}
+
+func archiveStringSlice(object interface{}, objects []interface{}) ([]interface{}, plist.UID) {
+	sl := object.([]string)
+	return serializeArray(toInterfaceSlice(sl), objects)
 }
 
 func archiveNSMutableDictionary(object interface{}, objects []interface{}) ([]interface{}, plist.UID) {

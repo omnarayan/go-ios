@@ -2,6 +2,7 @@ package dtx
 
 import (
 	"io"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -13,24 +14,24 @@ import (
 
 type MethodWithResponse func(msg Message) (interface{}, error)
 
-//Connection manages channels, including the GlobalChannel, for a DtxConnection and dispatches received messages
-//to the right channel.
+// Connection manages channels, including the GlobalChannel, for a DtxConnection and dispatches received messages
+// to the right channel.
 type Connection struct {
 	deviceConnection       ios.DeviceConnectionInterface
 	channelCodeCounter     int
-	activeChannels         map[int]*Channel
+	activeChannels         sync.Map
 	globalChannel          *Channel
 	capabilities           map[string]interface{}
 	mutex                  sync.Mutex
 	requestChannelMessages chan Message
 }
 
-//Dispatcher is a simple interface containing a Dispatch func to receive dtx.Messages
+// Dispatcher is a simple interface containing a Dispatch func to receive dtx.Messages
 type Dispatcher interface {
 	Dispatch(msg Message)
 }
 
-//GlobalDispatcher the message dispatcher for the automatically created global Channel
+// GlobalDispatcher the message dispatcher for the automatically created global Channel
 type GlobalDispatcher struct {
 	dispatchFunctions      map[string]func(Message)
 	requestChannelMessages chan Message
@@ -39,19 +40,23 @@ type GlobalDispatcher struct {
 
 const requestChannel = "_requestChannelWithCode:identifier:"
 
-//Close closes the underlying deviceConnection
-func (dtxConn *Connection) Close() {
-	dtxConn.deviceConnection.Close()
+// Close closes the underlying deviceConnection
+func (dtxConn *Connection) Close() error {
+	if dtxConn.deviceConnection != nil {
+		return dtxConn.deviceConnection.Close()
+	}
+	return nil
 }
 
-//GlobalChannel returns the connections automatically created global channel.
+// GlobalChannel returns the connections automatically created global channel.
 func (dtxConn *Connection) GlobalChannel() *Channel {
 	return dtxConn.globalChannel
 }
 
-//NewGlobalDispatcher create a Dispatcher for the GlobalChannel
+// NewGlobalDispatcher create a Dispatcher for the GlobalChannel
 func NewGlobalDispatcher(requestChannelMessages chan Message, dtxConnection *Connection) Dispatcher {
-	dispatcher := GlobalDispatcher{dispatchFunctions: map[string]func(Message){},
+	dispatcher := GlobalDispatcher{
+		dispatchFunctions:      map[string]func(Message){},
 		requestChannelMessages: requestChannelMessages,
 		dtxConnection:          dtxConnection,
 	}
@@ -60,21 +65,27 @@ func NewGlobalDispatcher(requestChannelMessages chan Message, dtxConnection *Con
 	return dispatcher
 }
 
-//Dispatch prints log messages and errors when they are received and also creates local Channels when requested by the device.
+// Dispatch prints log messages and errors when they are received and also creates local Channels when requested by the device.
 func (g GlobalDispatcher) Dispatch(msg Message) {
 	SendAckIfNeeded(g.dtxConnection, msg)
 	if msg.Payload != nil {
 		if requestChannel == msg.Payload[0] {
 			g.requestChannelMessages <- msg
 		}
-		//TODO: use the dispatchFunctions map
+		// TODO: use the dispatchFunctions map
 		if "outputReceived:fromProcess:atTime:" == msg.Payload[0] {
-			msg, _ := nskeyedarchiver.Unarchive(msg.Auxiliary.GetArguments()[0].([]byte))
-			log.Info(msg[0])
+			logmsg, err := nskeyedarchiver.Unarchive(msg.Auxiliary.GetArguments()[0].([]byte))
+			if err == nil {
+				log.WithFields(log.Fields{
+					"msg":  logmsg[0],
+					"pid":  msg.Auxiliary.GetArguments()[1],
+					"time": msg.Auxiliary.GetArguments()[2],
+				}).Info("outputReceived:fromProcess:atTime:")
+			}
 			return
 		}
 	}
-	log.Debugf("Global Dispatcher Received: %s %s", msg.Payload, msg.Auxiliary)
+	log.Tracef("Global Dispatcher Received: %s %s", msg.Payload, msg.Auxiliary)
 	if msg.HasError() {
 		log.Error(msg.Payload[0])
 	}
@@ -84,7 +95,7 @@ func notifyOfPublishedCapabilities(msg Message) {
 	log.Debug("capabs received")
 }
 
-//NewConnection connects and starts reading from a Dtx based service on the device
+// NewConnection connects and starts reading from a Dtx based service on the device
 func NewConnection(device ios.DeviceEntry, serviceName string) (*Connection, error) {
 	conn, err := ios.ConnectToService(device, serviceName)
 	if err != nil {
@@ -92,29 +103,31 @@ func NewConnection(device ios.DeviceEntry, serviceName string) (*Connection, err
 	}
 	requestChannelMessages := make(chan Message, 5)
 
-	//The global channel has channelCode 0, so we need to start with channelCodeCounter==1
-	dtxConnection := &Connection{deviceConnection: conn, channelCodeCounter: 1, activeChannels: map[int]*Channel{}, requestChannelMessages: requestChannelMessages}
+	// The global channel has channelCode 0, so we need to start with channelCodeCounter==1
+	dtxConnection := &Connection{deviceConnection: conn, channelCodeCounter: 1, requestChannelMessages: requestChannelMessages}
 
-	//The global channel is automatically present and used for requesting other channels and some other methods like notifyPublishedCapabilities
-	globalChannel := Channel{channelCode: 0,
+	// The global channel is automatically present and used for requesting other channels and some other methods like notifyPublishedCapabilities
+	globalChannel := Channel{
+		channelCode:       0,
 		messageIdentifier: 5, channelName: "global_channel", connection: dtxConnection,
 		messageDispatcher: NewGlobalDispatcher(requestChannelMessages, dtxConnection),
 		responseWaiters:   map[int]chan Message{},
 		registeredMethods: map[string]chan Message{},
 		defragmenters:     map[int]*FragmentDecoder{},
-		timeout:           5 * time.Second}
+		timeout:           5 * time.Second,
+	}
 	dtxConnection.globalChannel = &globalChannel
 	go reader(dtxConnection)
 
 	return dtxConnection, nil
 }
 
-//Send sends the byte slice directly to the device using the underlying DeviceConnectionInterface
+// Send sends the byte slice directly to the device using the underlying DeviceConnectionInterface
 func (dtxConn *Connection) Send(message []byte) error {
 	return dtxConn.deviceConnection.Send(message)
 }
 
-//reader reads messages from the byte stream and dispatches them to the right channel when they are decoded.
+// reader reads messages from the byte stream and dispatches them to the right channel when they are decoded.
 func reader(dtxConn *Connection) {
 	for {
 		reader := dtxConn.deviceConnection.Reader()
@@ -128,8 +141,8 @@ func reader(dtxConn *Connection) {
 			log.Errorf("error reading dtx connection %+v", err)
 			return
 		}
-
-		if channel, ok := dtxConn.activeChannels[msg.ChannelCode]; ok {
+		if _channel, ok := dtxConn.activeChannels.Load(msg.ChannelCode); ok {
+			channel := _channel.(*Channel)
 			channel.Dispatch(msg)
 		} else {
 			dtxConn.globalChannel.Dispatch(msg)
@@ -139,7 +152,6 @@ func reader(dtxConn *Connection) {
 
 func SendAckIfNeeded(dtxConn *Connection, msg Message) {
 	if msg.ExpectsReply {
-		log.Debug("sending ack")
 		ack := BuildAckMessage(msg)
 		err := dtxConn.Send(ack)
 		if err != nil {
@@ -152,16 +164,27 @@ func (dtxConn *Connection) ForChannelRequest(messageDispatcher Dispatcher) *Chan
 	msg := <-dtxConn.requestChannelMessages
 	dtxConn.mutex.Lock()
 	defer dtxConn.mutex.Unlock()
-	//code := msg.Auxiliary.GetArguments()[0].(uint32)
+	// code := msg.Auxiliary.GetArguments()[0].(uint32)
 	identifier, _ := nskeyedarchiver.Unarchive(msg.Auxiliary.GetArguments()[1].([]byte))
-	//TODO: Setting the channel code here manually to -1 for making testmanagerd work. For some reason it requests the TestDriver proxy channel with code 1 but sends messages on -1. Should probably be fixed somehow
+	// TODO: Setting the channel code here manually to -1 for making testmanagerd work. For some reason it requests the TestDriver proxy channel with code 1 but sends messages on -1. Should probably be fixed somehow
+	// TODO: try to refactor testmanagerd/xcuitest code and use AddDefaultChannelReceiver instead of this function. The only code calling this is in testmanagerd right now.
 	channel := &Channel{channelCode: -1, channelName: identifier[0].(string), messageIdentifier: 1, connection: dtxConn, messageDispatcher: messageDispatcher, responseWaiters: map[int]chan Message{}, defragmenters: map[int]*FragmentDecoder{}, timeout: 5 * time.Second}
-	dtxConn.activeChannels[-1] = channel
+	dtxConn.activeChannels.Store(-1, channel)
 	return channel
 }
 
-//RequestChannelIdentifier requests a channel to be opened on the Connection with the given identifier,
-//an automatically assigned channelCode and a Dispatcher for receiving messages.
+// AddDefaultChannelReceiver let's you set the Dispatcher for the Channel with code -1 ( or 4294967295 for uint32).
+// I am just calling it the "default" channel now, without actually figuring out what it is for exactly from disassembled code.
+// If someone wants to do that and bring some clarity, please go ahead :-)
+// This channel seems to always be there without explicitly requesting it and sometimes it is used.
+func (dtxConn *Connection) AddDefaultChannelReceiver(messageDispatcher Dispatcher) *Channel {
+	channel := &Channel{channelCode: -1, channelName: "c -1/ 4294967295 receiver channel ", messageIdentifier: 1, connection: dtxConn, messageDispatcher: messageDispatcher, responseWaiters: map[int]chan Message{}, defragmenters: map[int]*FragmentDecoder{}, timeout: 5 * time.Second}
+	dtxConn.activeChannels.Store(uint32(math.MaxUint32), channel)
+	return channel
+}
+
+// RequestChannelIdentifier requests a channel to be opened on the Connection with the given identifier,
+// an automatically assigned channelCode and a Dispatcher for receiving messages.
 func (dtxConn *Connection) RequestChannelIdentifier(identifier string, messageDispatcher Dispatcher, opts ...ChannelOption) *Channel {
 	dtxConn.mutex.Lock()
 	defer dtxConn.mutex.Unlock()
@@ -182,7 +205,7 @@ func (dtxConn *Connection) RequestChannelIdentifier(identifier string, messageDi
 	}
 	log.WithFields(log.Fields{"channel_id": identifier}).Debug("Channel open")
 	channel := &Channel{channelCode: code, channelName: identifier, messageIdentifier: 1, connection: dtxConn, messageDispatcher: messageDispatcher, responseWaiters: map[int]chan Message{}, defragmenters: map[int]*FragmentDecoder{}, timeout: 5 * time.Second}
-	dtxConn.activeChannels[code] = channel
+	dtxConn.activeChannels.Store(code, channel)
 	for _, opt := range opts {
 		opt(channel)
 	}
