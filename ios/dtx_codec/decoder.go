@@ -7,9 +7,10 @@ import (
 	"io"
 
 	"github.com/izinga/go-ios/ios/nskeyedarchiver"
+	log "github.com/sirupsen/logrus"
 )
 
-//ReadMessage uses the reader to fully read a Message from it in blocking mode.
+// ReadMessage uses the reader to fully read a Message from it in blocking mode.
 func ReadMessage(reader io.Reader) (Message, error) {
 	header := make([]byte, 32)
 	_, err := io.ReadFull(reader, header)
@@ -23,14 +24,14 @@ func ReadMessage(reader io.Reader) (Message, error) {
 
 	if result.IsFragment() {
 
-		//the first part of a fragmented message is only a header indicating the total length of
-		//the defragmented message
+		// the first part of a fragmented message is only a header indicating the total length of
+		// the defragmented message
 		if result.IsFirstFragment() {
-			//put in the header as bytes here
+			// put in the header as bytes here
 			result.fragmentBytes = header
 			return result, nil
 		}
-		//32 offset is correct, the binary starts with a payload header
+		// 32 offset is correct, the binary starts with a payload header
 		messageBytes := make([]byte, result.MessageLength)
 		_, err := io.ReadFull(reader, messageBytes)
 		if err != nil {
@@ -69,7 +70,7 @@ func ReadMessage(reader io.Reader) (Message, error) {
 		if err != nil {
 			return Message{}, err
 		}
-		result.Auxiliary = decodeAuxiliary(auxBytes)
+		result.Auxiliary = DecodeAuxiliary(auxBytes)
 	}
 
 	result.RawBytes = make([]byte, 0)
@@ -90,11 +91,10 @@ func ReadMessage(reader io.Reader) (Message, error) {
 	return result, nil
 }
 
-//DecodeNonBlocking should only be used for the debug proxy to on the fly decode DtxMessages.
-//It is used because if the Decoder encounters an error, we can still keep reading and forwarding the raw bytes.
-//This ensures that the debug proxy keeps working and the byte dump can be used to fix the DtxDecoder
+// DecodeNonBlocking should only be used for the debug proxy to on the fly decode DtxMessages.
+// It is used because if the Decoder encounters an error, we can still keep reading and forwarding the raw bytes.
+// This ensures that the debug proxy keeps working and the byte dump can be used to fix the DtxDecoder
 func DecodeNonBlocking(messageBytes []byte) (Message, []byte, error) {
-
 	if len(messageBytes) < 4 {
 		return Message{}, make([]byte, 0), NewIncomplete("Less than 4 bytes")
 	}
@@ -117,7 +117,7 @@ func DecodeNonBlocking(messageBytes []byte) (Message, []byte, error) {
 		return result, messageBytes[32:], nil
 	}
 	if result.IsFragment() {
-		//32 offset is correct, the binary starts with a payload header
+		// 32 offset is correct, the binary starts with a payload header
 		if len(messageBytes) < result.MessageLength+32 {
 			return Message{}, make([]byte, 0), NewIncomplete("Fragment lacks bytes")
 		}
@@ -148,7 +148,7 @@ func DecodeNonBlocking(messageBytes []byte) (Message, []byte, error) {
 			return Message{}, make([]byte, 0), NewIncomplete("Aux Payload missing")
 		}
 		auxBytes := messageBytes[64 : 48+result.PayloadHeader.AuxiliaryLength]
-		result.Auxiliary = decodeAuxiliary(auxBytes)
+		result.Auxiliary = DecodeAuxiliary(auxBytes)
 	}
 
 	totalMessageLength := result.MessageLength + int(DtxMessageHeaderLength)
@@ -156,6 +156,7 @@ func DecodeNonBlocking(messageBytes []byte) (Message, []byte, error) {
 		return Message{}, make([]byte, 0), NewIncomplete("Payload missing")
 	}
 	result.RawBytes = messageBytes[:totalMessageLength]
+
 	if result.HasPayload() {
 		payload, err := result.parsePayloadBytes(result.RawBytes)
 		if err != nil {
@@ -212,36 +213,45 @@ func (d Message) parsePayloadBytes(messageBytes []byte) ([]interface{}, error) {
 	if d.PayloadHeader.MessageType == UnknownTypeOne {
 		return []interface{}{messageBytes[offset:]}, nil
 	}
+	if d.PayloadHeader.MessageType == LZ4CompressedMessage {
+		uncompressed, err := Decompress(messageBytes[offset:])
+		if err == nil {
+			log.Infof("lz4 compressed %d bytes/ %d uncompressed ", len(messageBytes[offset:]), len(uncompressed))
+		} else {
+			log.Infof("skipping lz4 compressed msg with %d bytes, decompression error %v", len(messageBytes[offset:]), err)
+		}
+		return []interface{}{messageBytes[offset:]}, nil
+	}
 	return nskeyedarchiver.Unarchive(messageBytes[offset:])
 }
 
-//PayloadLength equals PayloadHeader.TotalPayloadLength - d.PayloadHeader.AuxiliaryLength so it is the Payload without the Auxiliary
+// PayloadLength equals PayloadHeader.TotalPayloadLength - d.PayloadHeader.AuxiliaryLength so it is the Payload without the Auxiliary
 func (d Message) PayloadLength() int {
 	return d.PayloadHeader.TotalPayloadLength - d.PayloadHeader.AuxiliaryLength
 }
 
-//HasAuxiliary returns PayloadHeader.AuxiliaryLength > 0
+// HasAuxiliary returns PayloadHeader.AuxiliaryLength > 0
 func (d Message) HasAuxiliary() bool {
 	return d.PayloadHeader.AuxiliaryLength > 0
 }
 
-//HasPayload returns PayloadLength() > 0, it is true if the Message has payload bytes
+// HasPayload returns PayloadLength() > 0, it is true if the Message has payload bytes
 func (d Message) HasPayload() bool {
 	return d.PayloadLength() > 0
 }
 
-//IsFirstFragment returns true if the message is the first of a series of fragments.IsFirstFragment
-//The first fragment message is only 32 bytes long
+// IsFirstFragment returns true if the message is the first of a series of fragments.IsFirstFragment
+// The first fragment message is only 32 bytes long
 func (d Message) IsFirstFragment() bool {
 	return d.Fragments > 1 && d.FragmentIndex == 0
 }
 
-//IsLastFragment returns true if this message is the last fragment
+// IsLastFragment returns true if this message is the last fragment
 func (d Message) IsLastFragment() bool {
 	return d.Fragments > 1 && d.Fragments-d.FragmentIndex == 1
 }
 
-//IsFragment returns true if the Message is a fragment
+// IsFragment returns true if the Message is a fragment
 func (d Message) IsFragment() bool {
 	return d.Fragments > 1
 }

@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package accessibility_test
@@ -30,6 +31,5 @@ func TestIT(t *testing.T) {
 	conn.GetElement()
 	conn.TurnOff()
 
-	//conn.EnableSelectionMode()
-
+	// conn.EnableSelectionMode()
 }

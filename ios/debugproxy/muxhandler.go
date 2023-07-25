@@ -11,6 +11,17 @@ import (
 )
 
 func proxyUsbMuxConnection(p *ProxyConnection, muxOnUnixSocket *ios.UsbMuxConnection, muxToDevice *ios.UsbMuxConnection) {
+	defer func() {
+		log.Println("done") // Println executes normally even if there is a panic
+		if x := recover(); x != nil {
+			log.Printf("run time panic, moving back socket %v", x)
+			err := MoveBack(ios.ToUnixSocketPath(ios.GetUsbmuxdSocket()))
+			if err != nil {
+				log.WithFields(log.Fields{"error": err}).Error("Failed moving back socket")
+			}
+			panic(x)
+		}
+	}()
 	for {
 		request, err := muxOnUnixSocket.ReadMessage()
 		if err != nil {
@@ -53,15 +64,21 @@ func proxyUsbMuxConnection(p *ProxyConnection, muxOnUnixSocket *ios.UsbMuxConnec
 		}
 
 		response, err := muxToDevice.ReadMessage()
+		if err != nil {
+			p.log.Error("Failed muxToDevice.ReadMessage()", request, err)
+		}
 		var decodedResponse map[string]interface{}
 		decoder = plist.NewDecoder(bytes.NewReader(response.Payload))
 		err = decoder.Decode(&decodedResponse)
 		if err != nil {
-			p.log.Info("Failed decoding MuxMessage", decodedResponse, err)
+			p.log.Error("Failed decoding MuxMessage", decodedResponse, err)
 		}
 		p.logJSONMessageFromDevice(map[string]interface{}{"header": response.Header, "payload": decodedResponse, "type": "USBMUX"})
 		p.log.WithFields(log.Fields{"ID": p.id, "direction": "device->host"}).Trace(decodedResponse)
 		err = muxOnUnixSocket.SendMuxMessage(response)
+		if err != nil {
+			p.log.Error("Failed muxOnUnixSocket.SendMuxMessage(response)", request, err)
+		}
 	}
 }
 
@@ -123,7 +140,7 @@ func handleConnectToLockdown(connectRequest ios.UsbMuxMessage, decodedConnectReq
 
 func handleListen(p *ProxyConnection, muxOnUnixSocket *ios.UsbMuxConnection, muxToDevice *ios.UsbMuxConnection) {
 	go func() {
-		//use this to detect when the conn is closed. There shouldn't be any messages received ever.
+		// use this to detect when the conn is closed. There shouldn't be any messages received ever.
 		_, err := muxOnUnixSocket.ReadMessage()
 		if err == io.EOF {
 			muxOnUnixSocket.ReleaseDeviceConnection().Close()
@@ -137,7 +154,7 @@ func handleListen(p *ProxyConnection, muxOnUnixSocket *ios.UsbMuxConnection, mux
 	for {
 		response, err := muxToDevice.ReadMessage()
 		if err != nil {
-			//TODO: ugly, improve
+			// TODO: ugly, improve
 			d := muxOnUnixSocket.ReleaseDeviceConnection()
 			d1 := muxToDevice.ReleaseDeviceConnection()
 			if d != nil {
@@ -159,6 +176,8 @@ func handleListen(p *ProxyConnection, muxOnUnixSocket *ios.UsbMuxConnection, mux
 		p.logJSONMessageFromDevice(map[string]interface{}{"header": response.Header, "payload": decodedResponse, "type": "USBMUX"})
 		p.log.WithFields(log.Fields{"ID": p.id, "direction": "device->host"}).Trace(decodedResponse)
 		err = muxOnUnixSocket.SendMuxMessage(response)
+		if err != nil {
+			p.log.Info("Failed muxOnUnixSocket.SendMuxMessage(response)", decodedResponse, err)
+		}
 	}
-
 }

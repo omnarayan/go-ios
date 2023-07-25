@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"reflect"
-
 	"testing"
 
 	"github.com/izinga/go-ios/ios/nskeyedarchiver"
@@ -16,7 +15,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-//TODO currently only partially decoding XCTestConfig is supported, fix later
+func TestArchiveSlice(t *testing.T) {
+	option := make(map[string]interface{})
+	option["name"] = "james"
+	option["age"] = 20
+	children := []string{"abc", "def", "ok"}
+	option["children"] = children
+	data, err := archiver.ArchiveXML(option)
+	if err != nil {
+		t.FailNow()
+	}
+	intf, err := archiver.Unarchive([]byte(data))
+	val := intf[0].(map[string]interface{})["children"].([]interface{})
+	assert.Equal(t, "abc", val[0])
+	assert.Equal(t, "def", val[1])
+	assert.Equal(t, "ok", val[2])
+	print(val)
+}
+
+// TODO currently only partially decoding XCTestConfig is supported, fix later
 func TestXCTestconfig(t *testing.T) {
 	uuid := uuid.New()
 	config := nskeyedarchiver.NewXCTestConfiguration("productmodulename", uuid, "targetAppBundle", "targetAppPath", "testBundleUrl")
@@ -32,7 +49,6 @@ func TestXCTestconfig(t *testing.T) {
 	log.Info(res)
 
 	nskeyedBytes, err := ioutil.ReadFile("fixtures/xctestconfiguration.bin")
-
 	if err != nil {
 		log.Error(err)
 		t.Fatal()
@@ -45,7 +61,41 @@ func TestXCTestconfig(t *testing.T) {
 
 func TestXCTCaps(t *testing.T) {
 	nskeyedBytes, err := ioutil.ReadFile("fixtures/XCTCapabilities.bin")
+	if err != nil {
 
+		log.Error(err)
+		t.Fatal()
+	}
+
+	unarchivedObject, err := archiver.Unarchive(nskeyedBytes)
+	assert.NoError(t, err)
+	log.Info(unarchivedObject)
+}
+
+func TestDTCPUClusterInfo(t *testing.T) {
+	nskeyedBytes, err := ioutil.ReadFile("fixtures/dtcpuclusterinfo.bin")
+	if err != nil {
+		log.Error(err)
+		t.Fatal()
+	}
+	unarchivedObject, err := archiver.Unarchive(nskeyedBytes)
+	assert.NoError(t, err)
+	log.Info(unarchivedObject)
+}
+
+func TestDTTapMessage(t *testing.T) {
+	nskeyedBytes, err := ioutil.ReadFile("fixtures/dttapmessage.bin")
+	if err != nil {
+		log.Error(err)
+		t.Fatal()
+	}
+	unarchivedObject, err := archiver.Unarchive(nskeyedBytes)
+	assert.NoError(t, err)
+	log.Info(unarchivedObject)
+}
+
+func TestDTSysmonTap(t *testing.T) {
+	nskeyedBytes, err := ioutil.ReadFile("fixtures/DTSysmonTapMessage.bin")
 	if err != nil {
 
 		log.Error(err)
@@ -59,7 +109,41 @@ func TestXCTCaps(t *testing.T) {
 
 func TestNSUUID(t *testing.T) {
 	nskeyedBytes, err := ioutil.ReadFile("fixtures/nsuuid.bin")
+	if err != nil {
+		log.Error(err)
+		t.Fatal()
+	}
 
+	unarchivedObject, err := archiver.Unarchive(nskeyedBytes)
+	assert.NoError(t, err)
+	log.Info(unarchivedObject)
+}
+
+func TestXCTestIdentifier(t *testing.T) {
+	nskeyedBytes, err := ioutil.ReadFile("fixtures/xctestidentifier.bin")
+	if err != nil {
+		log.Error(err)
+		t.Fatal()
+	}
+
+	unarchivedObject, err := archiver.Unarchive(nskeyedBytes)
+	assert.NoError(t, err)
+	log.Info(unarchivedObject)
+}
+
+func TestNSValue(t *testing.T) {
+	nskeyedBytes, err := ioutil.ReadFile("fixtures/nsvalue.bin")
+	if err != nil {
+		log.Error(err)
+		t.Fatal()
+	}
+	unarchivedObject, err := archiver.Unarchive(nskeyedBytes)
+	assert.NoError(t, err)
+	log.Info(unarchivedObject)
+}
+
+func TestWTF(t *testing.T) {
+	nskeyedBytes, err := ioutil.ReadFile("fixtures/int64-value-in-nskeyedarchive.bin")
 	if err != nil {
 		log.Error(err)
 		t.Fatal()
@@ -72,7 +156,6 @@ func TestNSUUID(t *testing.T) {
 
 func TestXCActivityRecord(t *testing.T) {
 	nskeyedBytes, err := ioutil.ReadFile("fixtures/XCActivityRecord.bin")
-
 	if err != nil {
 		log.Error(err)
 		t.Fatal()
@@ -85,7 +168,6 @@ func TestXCActivityRecord(t *testing.T) {
 
 func TestDTTapHeartbeatMessage(t *testing.T) {
 	nskeyedBytes, err := ioutil.ReadFile("fixtures/DTTapHeartbeatMessage.bin")
-
 	if err != nil {
 		log.Error(err)
 		t.Fatal()
@@ -96,11 +178,21 @@ func TestDTTapHeartbeatMessage(t *testing.T) {
 	log.Info(unarchivedObject)
 }
 
-//TODO currently uint64 dicts are decoded by converting the keys to strings, might wanna fix this later
+func TestDTTapstatusmessage(t *testing.T) {
+	nskeyedBytes, err := ioutil.ReadFile("fixtures/dttapstatusmessage.bin")
+	if err != nil {
+		log.Error(err)
+		t.Fatal()
+	}
+
+	unarchivedObject, err := archiver.Unarchive(nskeyedBytes)
+	assert.NoError(t, err)
+	log.Info(unarchivedObject)
+}
+
+// TODO currently uint64 dicts are decoded by converting the keys to strings, might wanna fix this later
 func TestIntKeyDictionary(t *testing.T) {
-
 	nskeyedBytes, err := ioutil.ReadFile("fixtures/uint64-key-dictionary.bin")
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +226,6 @@ func TestArchiverEmptyArray(t *testing.T) {
 
 func TestNSDate(t *testing.T) {
 	nskeyedBytes, err := ioutil.ReadFile("fixtures/ax_statechange.bin")
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +237,6 @@ func TestNSDate(t *testing.T) {
 
 func TestNSNull(t *testing.T) {
 	nskeyedBytes, err := ioutil.ReadFile("fixtures/ax_focus_on_element.bin")
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +253,6 @@ func TestNSNull(t *testing.T) {
 
 func TestArchiver3(t *testing.T) {
 	dat, err := ioutil.ReadFile("fixtures/payload_dump.json")
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,10 +274,9 @@ func TestArchiver3(t *testing.T) {
 	if assert.NoError(t, err2) {
 		assert.Equal(t, nska2, nska)
 	}
-
 }
 
-//TestDecoderJson tests if real DTX nsKeyedArchived plists can be decoded without error
+// TestDecoderJson tests if real DTX nsKeyedArchived plists can be decoded without error
 func TestArchiver(t *testing.T) {
 	dat, err := ioutil.ReadFile("fixtures/payload_dump.json")
 	if err != nil {
@@ -215,7 +303,7 @@ func TestArchiver(t *testing.T) {
 	}
 }
 
-//TestDecoderJson tests if real DTX nsKeyedArchived plists can be decoded without error
+// TestDecoderJson tests if real DTX nsKeyedArchived plists can be decoded without error
 func TestDecoderJson(t *testing.T) {
 	dat, err := ioutil.ReadFile("fixtures/payload_dump.json")
 	if err != nil {
@@ -264,7 +352,6 @@ func TestDecoder(t *testing.T) {
 }
 
 func TestValidation(t *testing.T) {
-
 	testCases := map[string]struct {
 		filename string
 	}{

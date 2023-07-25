@@ -3,24 +3,25 @@ package imagemounter
 import (
 	"errors"
 	"fmt"
-	"github.com/Masterminds/semver"
-	"github.com/izinga/go-ios/ios"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"os"
 	"strings"
+
+	"github.com/Masterminds/semver"
+	"github.com/izinga/go-ios/ios"
+	log "github.com/sirupsen/logrus"
 )
 
 const serviceName string = "com.apple.mobile.mobile_image_mounter"
 
-//Connection to mobile image mounter
+// Connection to mobile image mounter
 type Connection struct {
 	deviceConn ios.DeviceConnectionInterface
 	plistCodec ios.PlistCodec
 	version    *semver.Version
 }
 
-//New returns a new mobile image mounter Connection for the given DeviceID and Udid
+// New returns a new mobile image mounter Connection for the given DeviceID and Udid
 func New(device ios.DeviceEntry) (*Connection, error) {
 	version, err := ios.GetProductVersion(device)
 	if err != nil {
@@ -37,7 +38,7 @@ func New(device ios.DeviceEntry) (*Connection, error) {
 	}, nil
 }
 
-//ListImages returns a list with signatures of installed developer images
+// ListImages returns a list with signatures of installed developer images
 func (conn *Connection) ListImages() ([][]byte, error) {
 	req := map[string]interface{}{
 		"Command":   "LookupImage",
@@ -66,7 +67,7 @@ func (conn *Connection) ListImages() ([][]byte, error) {
 
 	signatures, ok := resp["ImageSignature"]
 	if !ok {
-		if conn.version.LessThan(semver.MustParse("14.0")) {
+		if conn.version.LessThan(ios.IOS14()) {
 			return [][]byte{}, nil
 		}
 		return nil, fmt.Errorf("invalid response: %+v", resp)
@@ -84,6 +85,7 @@ func (conn *Connection) ListImages() ([][]byte, error) {
 	return result, nil
 }
 
+// MountImage installs a .dmg image from imagePath after checking that it is present and valid.
 func (conn *Connection) MountImage(imagePath string) error {
 	signatureBytes, imageSize, err := validatePathAndLoadSignature(imagePath)
 	if err != nil {
@@ -170,7 +172,7 @@ func validatePathAndLoadSignature(imagePath string) ([]byte, int64, error) {
 	return signatureBytes, info.Size(), nil
 }
 
-//Close closes the underlying UsbMuxConnection
+// Close closes the underlying UsbMuxConnection
 func (conn *Connection) Close() {
 	conn.deviceConn.Close()
 }
@@ -238,4 +240,21 @@ func (conn *Connection) hangUp() error {
 		return err
 	}
 	return nil
+}
+
+func MountImage(device ios.DeviceEntry, path string) error {
+	conn, err := New(device)
+	if err != nil {
+		return fmt.Errorf("failed connecting to image mounter: %v", err)
+	}
+
+	signatures, err := conn.ListImages()
+	if err != nil {
+		return fmt.Errorf("failed getting image list: %v", err)
+	}
+	if len(signatures) != 0 {
+		log.Warn("there is already a developer image mounted, reboot the device if you want to remove it. aborting.")
+		return nil
+	}
+	return conn.MountImage(path)
 }

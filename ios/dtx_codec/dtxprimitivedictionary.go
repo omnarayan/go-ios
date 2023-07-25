@@ -37,6 +37,7 @@ func NewPrimitiveDictionary() PrimitiveDictionary {
 func (d *PrimitiveDictionary) AddInt32(value int) {
 	d.keyValuePairs.PushBack(PrimitiveKeyValuePair{t_null, nil, t_uint32, uint32(value)})
 }
+
 func (d *PrimitiveDictionary) AddBytes(value []byte) {
 	d.keyValuePairs.PushBack(PrimitiveKeyValuePair{t_null, nil, t_bytearray, value})
 }
@@ -45,9 +46,9 @@ func (d PrimitiveDictionary) GetArguments() []interface{} {
 	return d.values
 }
 
-//AddNsKeyedArchivedObject wraps the object in a NSKeyedArchiver envelope before saving it to the dictionary as a []byte.
-//This will panic on error because NSKeyedArchiver has to support everything that is put in here during runtime.
-//If not, it is a non-recoverable bug and needs to be fixed anyway.
+// AddNsKeyedArchivedObject wraps the object in a NSKeyedArchiver envelope before saving it to the dictionary as a []byte.
+// This will panic on error because NSKeyedArchiver has to support everything that is put in here during runtime.
+// If not, it is a non-recoverable bug and needs to be fixed anyway.
 func (d *PrimitiveDictionary) AddNsKeyedArchivedObject(object interface{}) {
 	archivedObject, err := nskeyedarchiver.ArchiveBin(object)
 	if err != nil {
@@ -56,7 +57,7 @@ func (d *PrimitiveDictionary) AddNsKeyedArchivedObject(object interface{}) {
 	d.AddBytes(archivedObject)
 }
 
-//ToBytes serializes this PrimitiveDictionary to a byte slice
+// ToBytes serializes this PrimitiveDictionary to a byte slice
 func (d PrimitiveDictionary) ToBytes() ([]byte, error) {
 	size := d.keyValuePairs.Len()
 	if size == 0 {
@@ -121,10 +122,12 @@ func (d PrimitiveDictionary) String() string {
 				prettyString = string(jsonBytes)
 			} else {
 				log.Warnf("failed decoding with %+v", err)
-
 			}
 			result += fmt.Sprintf("{t:%s, v:%s},", toString(v), prettyString)
 			continue
+		}
+		if v == t_string {
+			result += d.values[i].(string)
 		}
 		if v == t_uint32 {
 			result += fmt.Sprintf("{t:%s, v:%d},", toString(v), d.values[i])
@@ -136,7 +139,7 @@ func (d PrimitiveDictionary) String() string {
 	return result
 }
 
-func decodeAuxiliary(auxBytes []byte) PrimitiveDictionary {
+func DecodeAuxiliary(auxBytes []byte) PrimitiveDictionary {
 	result := PrimitiveDictionary{}
 	result.keyValuePairs = list.New()
 	for {
@@ -165,14 +168,15 @@ func decodeAuxiliary(auxBytes []byte) PrimitiveDictionary {
 
 	return result
 }
+
 func isNSKeyedArchiverEncoded(datatype uint32, obj interface{}) bool {
 	if datatype != t_bytearray {
 		return false
 	}
 	data := obj.([]byte)
 	return bytes.Index(data, []byte(nskeyedarchiver.NsKeyedArchiver)) != -1
-
 }
+
 func readEntry(auxBytes []byte) (uint32, interface{}, []byte) {
 	readType := binary.LittleEndian.Uint32(auxBytes)
 	if readType == t_null {
@@ -184,9 +188,13 @@ func readEntry(auxBytes []byte) (uint32, interface{}, []byte) {
 	if readType == t_int64 {
 		return t_int64, binary.LittleEndian.Uint64(auxBytes[4:12]), auxBytes[12:]
 	}
+
 	if hasLength(readType) {
 		length := binary.LittleEndian.Uint32(auxBytes[4:])
 		data := auxBytes[8 : 8+length]
+		if readType == t_string {
+			return readType, string(data), auxBytes[8+length:]
+		}
 		return readType, data, auxBytes[8+length:]
 	}
 	panic(fmt.Sprintf("Unknown DtxPrimitiveDictionaryType: %d  rawbytes:%x", readType, auxBytes))
@@ -206,6 +214,8 @@ func toString(t uint32) string {
 		return "null"
 	case t_bytearray:
 		return "binary"
+	case t_string:
+		return "string"
 	case t_uint32:
 		return "uint32"
 	case t_int64:
@@ -216,7 +226,7 @@ func toString(t uint32) string {
 }
 
 func hasLength(typeCode uint32) bool {
-	return typeCode == t_bytearray
+	return typeCode == t_bytearray || typeCode == t_string
 }
 
 type AuxiliaryEncoder struct {
@@ -233,7 +243,6 @@ func (a *AuxiliaryEncoder) AddNsKeyedArchivedObject(object interface{}) {
 }
 
 func (a *AuxiliaryEncoder) writeEntry(entryType uint32, object interface{}) {
-
 	binary.Write(&a.buf, binary.LittleEndian, entryType)
 	if entryType == t_null {
 		return
@@ -246,8 +255,12 @@ func (a *AuxiliaryEncoder) writeEntry(entryType uint32, object interface{}) {
 		a.buf.Write(object.([]byte))
 
 	}
-	panic(fmt.Sprintf("Unknown DtxPrimitiveDictionaryType: %d", entryType))
+	if entryType == t_string {
+		binary.Write(&a.buf, binary.LittleEndian, int32(len(object.([]byte))))
+		a.buf.Write([]byte(object.(string)))
 
+	}
+	panic(fmt.Sprintf("Unknown DtxPrimitiveDictionaryType: %d", entryType))
 }
 
 func (a *AuxiliaryEncoder) GetBytes() []byte {

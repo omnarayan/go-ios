@@ -22,11 +22,11 @@ type Channel struct {
 	timeout           time.Duration
 }
 
-//ChannelOption for configuring settings on dtx.Channels
+// ChannelOption for configuring settings on dtx.Channels
 type ChannelOption func(*Channel)
 
-//WithTimeout adds a custom timeout in seconds to the channel.
-//Some longer running synchronous operations need that.
+// WithTimeout adds a custom timeout in seconds to the channel.
+// Some longer running synchronous operations need that.
 func WithTimeout(seconds uint32) ChannelOption {
 	return func(h *Channel) {
 		h.timeout = time.Duration(seconds) * time.Second
@@ -46,8 +46,8 @@ func (d *Channel) ReceiveMethodCall(selector string) Message {
 	return <-channel
 }
 
-//MethodCall is the standard DTX style remote method invocation pattern. The ObjectiveC Selector goes as a NSKeyedArchiver.archived NSString into the
-//DTXMessage payload, and the arguments are separately NSKeyArchiver.archived and put into the Auxiliary DTXPrimitiveDictionary. It returns the response message and an error.
+// MethodCall is the standard DTX style remote method invocation pattern. The ObjectiveC Selector goes as a NSKeyedArchiver.archived NSString into the
+// DTXMessage payload, and the arguments are separately NSKeyArchiver.archived and put into the Auxiliary DTXPrimitiveDictionary. It returns the response message and an error.
 func (d *Channel) MethodCall(selector string, args ...interface{}) (Message, error) {
 	payload, _ := nskeyedarchiver.ArchiveBin(selector)
 	auxiliary := NewPrimitiveDictionary()
@@ -57,6 +57,7 @@ func (d *Channel) MethodCall(selector string, args ...interface{}) (Message, err
 	msg, err := d.SendAndAwaitReply(true, Methodinvocation, payload, auxiliary)
 	if err != nil {
 		log.WithFields(log.Fields{"channel_id": d.channelName, "error": err, "methodselector": selector}).Info("failed starting invoking method")
+		return msg, err
 	}
 	if msg.HasError() {
 		return msg, fmt.Errorf("Failed invoking method '%s' with error: %s", selector, msg.Payload[0])
@@ -73,6 +74,7 @@ func (d *Channel) MethodCallAsync(selector string, args ...interface{}) error {
 	err := d.Send(false, Methodinvocation, payload, auxiliary)
 	if err != nil {
 		log.WithFields(log.Fields{"channel_id": d.channelName, "error": err, "methodselector": selector}).Info("failed starting invoking method")
+		return err
 	}
 	return nil
 }
@@ -119,7 +121,6 @@ func (d *Channel) SendAndAwaitReply(expectsReply bool, messageType int, payloadB
 	case <-time.After(d.timeout):
 		return Message{}, fmt.Errorf("Timed out waiting for response for message:%d channel:%d", identifier, d.channelCode)
 	}
-
 }
 
 func (d *Channel) Dispatch(msg Message) {
@@ -128,7 +129,7 @@ func (d *Channel) Dispatch(msg Message) {
 		d.messageIdentifier = msg.Identifier + 1
 	}
 	if msg.PayloadHeader.MessageType == Methodinvocation {
-		log.Debug("Dispatching:", msg.Payload[0].(string))
+		log.Trace("Dispatching:", msg.Payload[0].(string))
 		if v, ok := d.registeredMethods[msg.Payload[0].(string)]; ok {
 			d.mutex.Unlock()
 			v <- msg

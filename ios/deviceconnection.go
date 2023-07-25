@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -12,54 +13,58 @@ import (
 
 // DeviceConnectionInterface contains a physical network connection to a usbmuxd socket.
 type DeviceConnectionInterface interface {
-	Close()
+	Close() error
 	Send(message []byte) error
 	Reader() io.Reader
 	Writer() io.Writer
 	EnableSessionSsl(pairRecord PairRecord) error
-	EnableSessionSslServerMode(pairRecord PairRecord)
+	EnableSessionSslServerMode(pairRecord PairRecord) error
 	EnableSessionSslHandshakeOnly(pairRecord PairRecord) error
-	EnableSessionSslServerModeHandshakeOnly(pairRecord PairRecord)
+	EnableSessionSslServerModeHandshakeOnly(pairRecord PairRecord) error
 	DisableSessionSSL()
 	Conn() net.Conn
 }
 
-//DeviceConnection wraps the net.Conn to the ios Device and has support for
-//switching Codecs and enabling SSL
+// DeviceConnection wraps the net.Conn to the ios Device and has support for
+// switching Codecs and enabling SSL
 type DeviceConnection struct {
 	c               net.Conn
 	unencryptedConn net.Conn
 }
 
-//NewDeviceConnection creates a new DeviceConnection pointing to the given socket waiting for a call to Connect()
+// NewDeviceConnection creates a new DeviceConnection pointing to the given socket waiting for a call to Connect()
 func NewDeviceConnection(socketToConnectTo string) (*DeviceConnection, error) {
 	conn := &DeviceConnection{}
 	return conn, conn.connectToSocketAddress(socketToConnectTo)
 }
 
-//NewDeviceConnectionWithConn create a DeviceConnection with a already connected network conn.
+// NewDeviceConnectionWithConn create a DeviceConnection with a already connected network conn.
 func NewDeviceConnectionWithConn(conn net.Conn) *DeviceConnection {
 	return &DeviceConnection{c: conn}
 }
 
-//ConnectToSocketAddress connects to the USB multiplexer with a specified socket addres
+// ConnectToSocketAddress connects to the USB multiplexer with a specified socket addres
 func (conn *DeviceConnection) connectToSocketAddress(socketAddress string) error {
-	c, err := net.Dial("unix", socketAddress)
+	if strings.HasPrefix(socketAddress, "/var") {
+		socketAddress = "unix://" + socketAddress
+	}
+	network, address := GetSocketTypeAndAddress(socketAddress)
+	c, err := net.Dial(network, address)
 	if err != nil {
 		return err
 	}
-	log.Debug("Opening connection:", &c)
+	log.Tracef("Opening connection: %v", &c)
 	conn.c = c
 	return nil
 }
 
-//Close closes the network connection
-func (conn *DeviceConnection) Close() {
-	log.Debug("Closing connection:", &conn.c)
-	conn.c.Close()
+// Close closes the network connection
+func (conn *DeviceConnection) Close() error {
+	log.Tracef("Closing connection: %v", &conn.c)
+	return conn.c.Close()
 }
 
-//Send sends a message
+// Send sends a message
 func (conn *DeviceConnection) Send(bytes []byte) error {
 	n, err := conn.c.Write(bytes)
 	if n < len(bytes) {
@@ -73,19 +78,19 @@ func (conn *DeviceConnection) Send(bytes []byte) error {
 	return nil
 }
 
-//Reader exposes the underlying net.Conn as io.Reader
+// Reader exposes the underlying net.Conn as io.Reader
 func (conn *DeviceConnection) Reader() io.Reader {
 	return conn.c
 }
 
-//Writer exposes the underlying net.Conn as io.Writer
+// Writer exposes the underlying net.Conn as io.Writer
 func (conn *DeviceConnection) Writer() io.Writer {
 	return conn.c
 }
 
-//DisableSessionSSL is a hack to go back from SSL to an unencrypted conn without closing the connection.
-//It is only used for the debug proxy because certain MAC applications actually disable SSL, use the connection
-//to send unencrypted messages just to then enable SSL again without closing the connection
+// DisableSessionSSL is a hack to go back from SSL to an unencrypted conn without closing the connection.
+// It is only used for the debug proxy because certain MAC applications actually disable SSL, use the connection
+// to send unencrypted messages just to then enable SSL again without closing the connection
 func (conn *DeviceConnection) DisableSessionSSL() {
 	/*
 		Sometimes, apple tools will remove SSL from a lockdown connection after StopSession was received.
@@ -94,16 +99,16 @@ func (conn *DeviceConnection) DisableSessionSSL() {
 		This is not really supported by any library afaik so I added this hack to make it work.
 	*/
 
-	//First send a close write
+	// First send a close write
 	err := conn.c.(*tls.Conn).CloseWrite()
 	if err != nil {
 		log.Errorf("failed closewrite %v", err)
 	}
-	//Use the underlying conn again to receive unencrypted bytes
+	// Use the underlying conn again to receive unencrypted bytes
 	conn.c = conn.unencryptedConn
-	//tls.Conn.CloseWrite() sets the writeDeadline to now, which will cause
-	//all writes to timeout immediately, for this hacky workaround
-	//we need to undo that
+	// tls.Conn.CloseWrite() sets the writeDeadline to now, which will cause
+	// all writes to timeout immediately, for this hacky workaround
+	// we need to undo that
 	err = conn.c.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	if err != nil {
 		log.Errorf("failed setting writedeadline after TLS disable:%v", err)
@@ -130,20 +135,26 @@ func (conn *DeviceConnection) DisableSessionSSL() {
 	log.Tracef("rcv tls payload: %x", payload)
 }
 
-//EnableSessionSslServerMode wraps the underlying net.Conn in a server tls.Conn using the pairRecord.
-func (conn *DeviceConnection) EnableSessionSslServerMode(pairRecord PairRecord) {
-	tlsConn, _ := conn.createServerTLSConn(pairRecord)
+// EnableSessionSslServerMode wraps the underlying net.Conn in a server tls.Conn using the pairRecord.
+func (conn *DeviceConnection) EnableSessionSslServerMode(pairRecord PairRecord) error {
+	tlsConn, err := conn.createServerTLSConn(pairRecord)
+	if err != nil {
+		return err
+	}
+
 	conn.unencryptedConn = conn.c
 	conn.c = net.Conn(tlsConn)
+	return nil
 }
 
-//EnableSessionSslServerModeHandshakeOnly enables SSL only for the Handshake and then falls back to plaintext
-//DTX based services do that currently. Server mode is needed only in the debugproxy.
-func (conn *DeviceConnection) EnableSessionSslServerModeHandshakeOnly(pairRecord PairRecord) {
-	conn.createServerTLSConn(pairRecord)
+// EnableSessionSslServerModeHandshakeOnly enables SSL only for the Handshake and then falls back to plaintext
+// DTX based services do that currently. Server mode is needed only in the debugproxy.
+func (conn *DeviceConnection) EnableSessionSslServerModeHandshakeOnly(pairRecord PairRecord) error {
+	_, err := conn.createServerTLSConn(pairRecord)
+	return err
 }
 
-//EnableSessionSsl wraps the underlying net.Conn in a client tls.Conn using the pairRecord.
+// EnableSessionSsl wraps the underlying net.Conn in a client tls.Conn using the pairRecord.
 func (conn *DeviceConnection) EnableSessionSsl(pairRecord PairRecord) error {
 	tlsConn, err := conn.createClientTLSConn(pairRecord)
 	if err != nil {
@@ -154,8 +165,8 @@ func (conn *DeviceConnection) EnableSessionSsl(pairRecord PairRecord) error {
 	return nil
 }
 
-//EnableSessionSslHandshakeOnly enables SSL only for the Handshake and then falls back to plaintext
-//DTX based services do that currently
+// EnableSessionSslHandshakeOnly enables SSL only for the Handshake and then falls back to plaintext
+// DTX based services do that currently
 func (conn *DeviceConnection) EnableSessionSslHandshakeOnly(pairRecord PairRecord) error {
 	_, err := conn.createClientTLSConn(pairRecord)
 	if err != nil {
@@ -171,8 +182,8 @@ func (conn *DeviceConnection) createClientTLSConn(pairRecord PairRecord) (*tls.C
 		return nil, err
 	}
 	conf := &tls.Config{
-		//We always trust whatever the phone sends, I do not see an issue here as probably
-		//nobody would build a fake iphone to hack this library.
+		// We always trust whatever the phone sends, I do not see an issue here as probably
+		// nobody would build a fake iphone to hack this library.
 		InsecureSkipVerify: true,
 		Certificates:       []tls.Certificate{cert5},
 		ClientAuth:         tls.NoClientCert,
@@ -185,22 +196,22 @@ func (conn *DeviceConnection) createClientTLSConn(pairRecord PairRecord) (*tls.C
 		return nil, err
 	}
 
-	log.Debug("enable session ssl on", &conn.c, " and wrap with tlsConn", &tlsConn)
+	log.Tracef("enable session ssl on %v and wrap with tlsConn: %v", &conn.c, &tlsConn)
 	return tlsConn, nil
 }
 
 func (conn *DeviceConnection) createServerTLSConn(pairRecord PairRecord) (*tls.Conn, error) {
-	//we can just use the hostcert and key here, normally the device has its own pair of cert and key
-	//but we do not know the device private key. funny enough, host has been signed by the same root cert
-	//so it will be accepted by clients
+	// we can just use the hostcert and key here, normally the device has its own pair of cert and key
+	// but we do not know the device private key. funny enough, host has been signed by the same root cert
+	// so it will be accepted by clients
 	cert5, err := tls.X509KeyPair(pairRecord.HostCertificate, pairRecord.HostPrivateKey)
 	if err != nil {
 		log.Error("Error SSL:" + err.Error())
 		return nil, err
 	}
 	conf := &tls.Config{
-		//We always trust whatever the phone sends, I do not see an issue here as probably
-		//nobody would build a fake iphone to hack this library.
+		// We always trust whatever the phone sends, I do not see an issue here as probably
+		// nobody would build a fake iphone to hack this library.
 		InsecureSkipVerify: true,
 		Certificates:       []tls.Certificate{cert5},
 		ClientAuth:         tls.NoClientCert,
@@ -211,7 +222,7 @@ func (conn *DeviceConnection) createServerTLSConn(pairRecord PairRecord) (*tls.C
 		log.Info("Handshake error", err)
 		return nil, err
 	}
-	log.Debug("enable session ssl on", &conn.c, " and wrap with tlsConn", &tlsConn)
+	log.Tracef("enable session ssl on %v and wrap with tlsConn: %v", &conn.c, &tlsConn)
 	return tlsConn, nil
 }
 
