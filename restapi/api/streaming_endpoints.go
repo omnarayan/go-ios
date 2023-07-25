@@ -4,9 +4,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/danielpaulus/go-ios/ios"
-	"github.com/danielpaulus/go-ios/ios/syslog"
 	"github.com/gin-gonic/gin"
+	"github.com/izinga/go-ios/ios"
+	"github.com/izinga/go-ios/ios/syslog"
 	log "github.com/sirupsen/logrus"
 )
 

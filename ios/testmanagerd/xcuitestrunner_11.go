@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
-	"github.com/danielpaulus/go-ios/ios"
-	dtx "github.com/danielpaulus/go-ios/ios/dtx_codec"
-	"github.com/danielpaulus/go-ios/ios/instruments"
+	"github.com/izinga/go-ios/ios"
+	dtx "github.com/izinga/go-ios/ios/dtx_codec"
+	"github.com/izinga/go-ios/ios/instruments"
 	log "github.com/sirupsen/logrus"
 )
 

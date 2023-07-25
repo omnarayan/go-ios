@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/danielpaulus/go-ios/ios"
 	"github.com/gin-gonic/gin"
+	"github.com/izinga/go-ios/ios"
 )
 
 // DeviceMiddleware makes sure a udid was specified and that a device with that UDID

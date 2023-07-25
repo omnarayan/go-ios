@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/danielpaulus/go-ios/ios"
+	"github.com/izinga/go-ios/ios"
 	log "github.com/sirupsen/logrus"
 )
 

@@ -8,7 +8,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/pkcs12"
 
-	ios "github.com/danielpaulus/go-ios/ios"
+	ios "github.com/izinga/go-ios/ios"
 )
 
 const serviceName string = "com.apple.mobile.MCInstall"

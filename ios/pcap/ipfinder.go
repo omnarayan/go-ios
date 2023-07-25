@@ -1,9 +1,9 @@
 package pcap
 
 import (
-	"github.com/danielpaulus/go-ios/ios"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/izinga/go-ios/ios"
 	log "github.com/sirupsen/logrus"
 )
 

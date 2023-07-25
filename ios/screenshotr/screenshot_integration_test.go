@@ -7,8 +7,8 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/danielpaulus/go-ios/ios"
-	"github.com/danielpaulus/go-ios/ios/screenshotr"
+	"github.com/izinga/go-ios/ios"
+	"github.com/izinga/go-ios/ios/screenshotr"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/danielpaulus/go-ios/ios"
-	"github.com/danielpaulus/go-ios/ios/imagemounter"
-	"github.com/danielpaulus/go-ios/ios/installationproxy"
-	"github.com/danielpaulus/go-ios/ios/testmanagerd"
-	"github.com/danielpaulus/go-ios/ios/zipconduit"
+	"github.com/izinga/go-ios/ios"
+	"github.com/izinga/go-ios/ios/imagemounter"
+	"github.com/izinga/go-ios/ios/installationproxy"
+	"github.com/izinga/go-ios/ios/testmanagerd"
+	"github.com/izinga/go-ios/ios/zipconduit"
 	log "github.com/sirupsen/logrus"
 	"github.com/sirupsen/logrus/hooks/test"
 )
